@@ -1,0 +1,18 @@
+# Normalise line endings so Windows checkouts and Linux CI produce identical
+# diffs and identical file hashes.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Generated / vendored - collapse in PR diffs.
+package-lock.json linguist-generated=true -diff
+lib/generated/** linguist-generated=true

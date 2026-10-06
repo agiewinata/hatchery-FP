@@ -1,0 +1,25 @@
+# Local development infrastructure.
+# The app itself runs on the host via `npm run dev`; this provides its Postgres.
+# See Dockerfile / docker-compose.prod.yml for running the app in a container.
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: keychain-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: keychain
+      POSTGRES_PASSWORD: keychain_dev_only
+      POSTGRES_DB: keychain
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keychain -d keychain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

@@ -1,0 +1,457 @@
+// Keychain & Memorabilia Marketplace - data model
+//
+// Design notes:
+//  * Money is stored as INTEGER RUPIAH (whole IDR), never floats. Xendit expects
+//    whole-rupiah amounts, so DB unit == gateway unit and there is no scaling
+//    step that could introduce a x100 bug at the payment boundary.
+//  * One Product table carries BOTH fulfilment models via fulfilmentType.
+//    The catalog, cart and checkout stay single-path; only post-payment
+//    fulfilment branches.
+//  * OrderItem snapshots title/price at purchase time so later seller edits
+//    never rewrite order history.
+//  * OrderItemEvent is append-only and IS the order progress tracker.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===========================================================================
+// Better Auth core tables (owned by Better Auth; names/fields must match)
+// ===========================================================================
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // --- application fields ---
+  role   UserRole @default(BUYER)
+  banned Boolean  @default(false)
+
+  sessions Session[]
+  accounts Account[]
+
+  sellerProfile  SellerProfile?
+  cartItems      CartItem[]
+  orders         Order[]
+  addresses      Address[]
+  auditLogs      AuditLog[]
+  recordedEvents OrderItemEvent[] @relation("EventActor")
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  // Password hash for the email+password provider. Hashed by Better Auth
+  // (scrypt); plaintext is never stored.
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+// Backs email-verification AND password-reset tokens. Single-use and expiring,
+// managed by Better Auth - we do not hand-roll reset tokens.
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ===========================================================================
+// Marketplace
+// ===========================================================================
+
+/// The artist/seller portfolio. Publicly readable at /sellers/[slug].
+model SellerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  slug        String  @unique
+  displayName String
+  bio         String? @db.Text
+  avatarUrl   String?
+  bannerUrl   String?
+  location    String?
+  websiteUrl  String?
+  instagram   String?
+
+  /// Admin gate: unapproved sellers cannot publish ACTIVE products.
+  isApproved Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products   Product[]
+  orderItems OrderItem[]
+  balance    SellerBalance?
+  payouts    PayoutRequest[]
+
+  @@map("seller_profile")
+}
+
+model Product {
+  id       String        @id @default(cuid())
+  sellerId String
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  title       String
+  slug        String          @unique
+  description String          @db.Text
+  category    ProductCategory
+  /// Whole rupiah. Never a float.
+  priceIdr    Int
+  status      ProductStatus   @default(DRAFT)
+
+  /// Discriminator: decides the post-payment fulfilment path.
+  fulfilmentType FulfilmentType
+
+  /// PRINT_ON_DEMAND only: the artwork we print from.
+  artworkUrl String?
+  /// SELLER_STOCKED only: units on hand. Null for print-on-demand (unlimited).
+  stockQty   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  images     ProductImage[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([sellerId])
+  @@index([status, category])
+  @@map("product")
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  sortOrder Int     @default(0)
+
+  @@index([productId])
+  @@map("product_image")
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  qty       Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One row per product per user; quantity changes instead of duplicating.
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("cart_item")
+}
+
+model Address {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  recipient  String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  province   String
+  postalCode String
+  country    String  @default("ID")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("address")
+}
+
+model Order {
+  id          String @id @default(cuid())
+  /// Human-facing reference shown to the buyer and sent to the gateway.
+  orderNumber String @unique
+
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id])
+
+  /// Whole rupiah, all computed server-side from the DB at checkout.
+  subtotalIdr Int
+  shippingIdr Int
+  totalIdr    Int
+
+  /// Denormalised snapshot - the address as it was at purchase time.
+  shippingAddress Json
+
+  paymentProvider  PaymentProvider
+  paymentStatus    PaymentStatus   @default(PENDING)
+  /// Gateway invoice id (Xendit invoice id).
+  gatewayInvoiceId String?
+  gatewayPayload   Json?
+  paidAt           DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items OrderItem[]
+
+  @@index([buyerId])
+  @@index([paymentStatus])
+  @@map("order")
+}
+
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product       @relation(fields: [productId], references: [id])
+  sellerId  String
+  seller    SellerProfile @relation(fields: [sellerId], references: [id])
+
+  /// Snapshots: order history must not change when the product does.
+  titleSnapshot String
+  unitPriceIdr  Int
+  qty           Int
+
+  fulfilmentType FulfilmentType
+  status         OrderItemStatus @default(PENDING_PAYMENT)
+
+  /// Seller share, credited to SellerBalance once payment is confirmed.
+  sellerEarningsIdr Int @default(0)
+  /// Platform share. earnings + commission == unitPriceIdr * qty.
+  commissionIdr     Int @default(0)
+
+  trackingNumber String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events OrderItemEvent[]
+
+  @@index([orderId])
+  @@index([sellerId, status])
+  @@index([status])
+  @@map("order_item")
+}
+
+/// Append-only status history. This table IS the order progress tracker:
+/// the buyer timeline is a read of these rows, so history is never lost.
+model OrderItemEvent {
+  id          String    @id @default(cuid())
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  status OrderItemStatus
+  note   String?
+
+  /// Null when written by the system (e.g. the payment webhook).
+  createdById String?
+  createdBy   User?   @relation("EventActor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderItemId, createdAt])
+  @@map("order_item_event")
+}
+
+// ===========================================================================
+// Earnings (in-app only - no real money leaves the platform)
+// ===========================================================================
+
+model SellerBalance {
+  id       String        @id @default(cuid())
+  sellerId String        @unique
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  /// Withdrawable now (order delivered).
+  availableIdr Int @default(0)
+  /// Paid but not yet delivered.
+  pendingIdr   Int @default(0)
+  /// Lifetime total, for the portfolio/dashboard.
+  lifetimeIdr  Int @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("seller_balance")
+}
+
+model PayoutRequest {
+  id       String        @id @default(cuid())
+  sellerId String
+  seller   SellerProfile @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  amountIdr   Int
+  status      PayoutStatus @default(REQUESTED)
+  bankName    String
+  bankAccount String
+  note        String?
+
+  requestedAt DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  @@index([sellerId])
+  @@map("payout_request")
+}
+
+// ===========================================================================
+// Security / operations
+// ===========================================================================
+
+/// Gateway callback log. The unique externalId is what makes webhook
+/// processing idempotent: a replayed delivery hits the constraint and is a no-op.
+model WebhookEvent {
+  id          String          @id @default(cuid())
+  provider    PaymentProvider
+  externalId  String
+  eventType   String
+  payload     Json
+  receivedAt  DateTime        @default(now())
+  processedAt DateTime?
+  error       String?
+
+  @@unique([provider, externalId])
+  @@map("webhook_event")
+}
+
+/// Audit trail for sensitive actions (role changes, payouts, admin transitions).
+model AuditLog {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_log")
+}
+
+// ===========================================================================
+// Enums
+// ===========================================================================
+
+enum UserRole {
+  BUYER
+  SELLER
+  ADMIN
+}
+
+enum FulfilmentType {
+  /// Artist uploads artwork; the PLATFORM prints and ships it.
+  PRINT_ON_DEMAND
+  /// Seller holds stock and ships it themselves.
+  SELLER_STOCKED
+}
+
+enum ProductCategory {
+  KEYCHAIN
+  ENAMEL_PIN
+  STICKER
+  ACRYLIC_STAND
+  POSTER
+  MEMORABILIA
+  OTHER
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum PaymentProvider {
+  MOCK
+  XENDIT
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+/// One enum spanning both fulfilment paths. The tracker UI renders only the
+/// steps belonging to an item's own fulfilmentType.
+enum OrderItemStatus {
+  PENDING_PAYMENT
+  PAID
+  // --- print-on-demand path ---
+  IN_PRODUCTION
+  PRINTED
+  PACKED
+  // --- seller-stocked path ---
+  AWAITING_SELLER_SHIPMENT
+  // --- shared tail ---
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PayoutStatus {
+  REQUESTED
+  APPROVED
+  PAID
+  REJECTED
+}

@@ -102,6 +102,23 @@ model Verification {
   @@map("verification")
 }
 
+/// Better Auth rate-limit counters.
+///
+/// SECURITY: this MUST be database-backed rather than Better Auth's default
+/// in-memory store. On Vercel each serverless instance has its own memory, so
+/// an in-memory limiter resets constantly and a credential-stuffing attacker
+/// simply spreads attempts across instances. A shared table makes the limit real.
+model RateLimit {
+  id  String @id @default(cuid())
+  key String @unique
+  /// Requests observed in the current window.
+  count Int
+  /// Unix epoch milliseconds - exceeds Int32, so BigInt is required.
+  lastRequest BigInt
+
+  @@map("rate_limit")
+}
+
 // ===========================================================================
 // Marketplace
 // ===========================================================================

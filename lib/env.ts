@@ -40,6 +40,15 @@ const schema = z
     GOOGLE_CLIENT_ID: z.string().default(""),
     GOOGLE_CLIENT_SECRET: z.string().default(""),
 
+    /// Reject passwords found in the Have I Been Pwned breach corpus.
+    /// Privacy-preserving (k-anonymity: only the first 5 chars of the SHA-1
+    /// hash are sent), but it DOES require outbound network access during
+    /// sign-up and password reset. Set to "false" if that is unreliable.
+    ENABLE_PWNED_PASSWORD_CHECK: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((v) => v === "true"),
+
     // --- Payments ---
     PAYMENT_PROVIDER: providerPair(["MOCK", "XENDIT"]).default("MOCK"),
     XENDIT_SECRET_KEY: z.string().default(""),

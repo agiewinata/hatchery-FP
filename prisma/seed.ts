@@ -1,0 +1,245 @@
+/**
+ * Development seed data.
+ *
+ * Creates accounts through Better Auth's own sign-up API rather than inserting
+ * rows directly, so passwords are hashed by the real code path (scrypt) and the
+ * user/account relationship is built exactly as it is in production. A seed
+ * that hand-writes password hashes is a seed that can drift from reality.
+ *
+ * Idempotent: re-running updates rather than duplicating.
+ *
+ *   npm run db:seed
+ */
+import "dotenv/config";
+
+import { auth } from "../lib/auth";
+import { db } from "../lib/db";
+import type { ProductCategory, FulfilmentType } from "../lib/generated/prisma/enums";
+
+/**
+ * Seed passwords are long passphrases: the Have I Been Pwned check is active by
+ * default and will (correctly) refuse anything from a breach corpus.
+ */
+const DEMO_PASSWORD = "brass-rail-charm-98213";
+
+interface SeedUser {
+  email: string;
+  name: string;
+  role: "ADMIN" | "SELLER" | "BUYER";
+}
+
+const USERS: SeedUser[] = [
+  { email: "admin@keychain.test", name: "Platform Admin", role: "ADMIN" },
+  { email: "buyer@keychain.test", name: "Rina Hartono", role: "BUYER" },
+  { email: "mira@keychain.test", name: "Mira Santoso", role: "SELLER" },
+  { email: "deni@keychain.test", name: "Deni Pratama", role: "SELLER" },
+];
+
+async function upsertUser(seed: SeedUser): Promise<string> {
+  const existing = await db.user.findUnique({ where: { email: seed.email } });
+
+  if (!existing) {
+    await auth.api.signUpEmail({
+      body: { email: seed.email, password: DEMO_PASSWORD, name: seed.name },
+    });
+  }
+
+  // Role and emailVerified are deliberately NOT settable through the sign-up
+  // API (see `input: false` in lib/auth.ts), so the seed sets them directly.
+  const user = await db.user.update({
+    where: { email: seed.email },
+    data: { role: seed.role, emailVerified: true, name: seed.name },
+    select: { id: true },
+  });
+
+  console.log(`  user  ${seed.email.padEnd(24)} ${seed.role}`);
+  return user.id;
+}
+
+interface SeedProduct {
+  title: string;
+  slug: string;
+  description: string;
+  category: ProductCategory;
+  priceIdr: number;
+  fulfilmentType: FulfilmentType;
+  stockQty?: number;
+  artworkUrl?: string;
+}
+
+const MIRA_PRODUCTS: SeedProduct[] = [
+  {
+    title: "Sleeping Fox Acrylic Charm",
+    slug: "sleeping-fox-acrylic-charm",
+    description:
+      "A 6cm double-sided acrylic charm with a holographic laminate, on a silver split ring. Printed to order.",
+    category: "KEYCHAIN",
+    priceIdr: 45_000,
+    fulfilmentType: "PRINT_ON_DEMAND",
+    artworkUrl: "/seed/fox.svg",
+  },
+  {
+    title: "Night Market Sticker Sheet",
+    slug: "night-market-sticker-sheet",
+    description:
+      "Twelve weatherproof vinyl stickers on one A6 sheet. Food carts, paper lanterns and a very determined cat.",
+    category: "STICKER",
+    priceIdr: 28_000,
+    fulfilmentType: "PRINT_ON_DEMAND",
+    artworkUrl: "/seed/market.svg",
+  },
+  {
+    title: "Rainy Season Enamel Pin",
+    slug: "rainy-season-enamel-pin",
+    description:
+      "Hard enamel, 32mm, polished gold plating with two rubber clutches. A small umbrella against a lot of weather.",
+    category: "ENAMEL_PIN",
+    priceIdr: 85_000,
+    fulfilmentType: "SELLER_STOCKED",
+    stockQty: 24,
+  },
+  {
+    title: "Komodo Acrylic Stand",
+    slug: "komodo-acrylic-stand",
+    description: "A 12cm acrylic standee with a separate base. Ships flat in a rigid mailer.",
+    category: "ACRYLIC_STAND",
+    priceIdr: 120_000,
+    fulfilmentType: "PRINT_ON_DEMAND",
+    artworkUrl: "/seed/komodo.svg",
+  },
+];
+
+const DENI_PRODUCTS: SeedProduct[] = [
+  {
+    title: "Warung Signage Keychain",
+    slug: "warung-signage-keychain",
+    description:
+      "Hand-lettered warung signage on a 5cm acrylic charm. Part of an ongoing series about roadside typography.",
+    category: "KEYCHAIN",
+    priceIdr: 42_000,
+    fulfilmentType: "PRINT_ON_DEMAND",
+    artworkUrl: "/seed/warung.svg",
+  },
+  {
+    title: "Bemo Riso Print A4",
+    slug: "bemo-riso-print-a4",
+    description:
+      "Two-colour risograph print on 120gsm paper, signed and numbered in an edition of 50. Ships rolled.",
+    category: "POSTER",
+    priceIdr: 180_000,
+    fulfilmentType: "SELLER_STOCKED",
+    stockQty: 11,
+  },
+  {
+    title: "Transit Card Holder",
+    slug: "transit-card-holder",
+    description: "A printed PVC card sleeve with a detachable keyring. Fits one transit card.",
+    category: "MEMORABILIA",
+    priceIdr: 55_000,
+    fulfilmentType: "PRINT_ON_DEMAND",
+    artworkUrl: "/seed/transit.svg",
+  },
+  {
+    title: "Kretek Tin Pin Set",
+    slug: "kretek-tin-pin-set",
+    description:
+      "Three 25mm soft enamel pins in a printed tin. Last of the first run - no reprint planned.",
+    category: "ENAMEL_PIN",
+    priceIdr: 150_000,
+    fulfilmentType: "SELLER_STOCKED",
+    stockQty: 3,
+  },
+];
+
+async function seedSeller(
+  userId: string,
+  profile: { slug: string; displayName: string; bio: string; location: string; instagram: string },
+  products: SeedProduct[],
+) {
+  const seller = await db.sellerProfile.upsert({
+    where: { userId },
+    create: { userId, ...profile, isApproved: true },
+    update: { ...profile, isApproved: true },
+    select: { id: true, slug: true },
+  });
+
+  await db.sellerBalance.upsert({
+    where: { sellerId: seller.id },
+    create: { sellerId: seller.id },
+    update: {},
+  });
+
+  for (const p of products) {
+    await db.product.upsert({
+      where: { slug: p.slug },
+      create: { ...p, sellerId: seller.id, status: "ACTIVE" },
+      update: { ...p, sellerId: seller.id, status: "ACTIVE" },
+    });
+  }
+
+  console.log(`  seller /sellers/${seller.slug.padEnd(16)} ${products.length} products`);
+  return seller;
+}
+
+async function main() {
+  console.log("\nSeeding database\n");
+
+  const ids = new Map<string, string>();
+  for (const u of USERS) {
+    ids.set(u.email, await upsertUser(u));
+  }
+
+  console.log("");
+
+  await seedSeller(
+    ids.get("mira@keychain.test")!,
+    {
+      slug: "mira-santoso",
+      displayName: "Mira Santoso",
+      bio: "Illustrator in Bandung. Mostly animals, mostly asleep. Charms printed to order, pins made in small batches.",
+      location: "Bandung, Indonesia",
+      instagram: "mirasantoso.art",
+    },
+    MIRA_PRODUCTS,
+  );
+
+  await seedSeller(
+    ids.get("deni@keychain.test")!,
+    {
+      slug: "deni-pratama",
+      displayName: "Deni Pratama",
+      bio: "Collecting and redrawing roadside lettering from Java. Riso prints pulled by hand; everything else printed to order.",
+      location: "Yogyakarta, Indonesia",
+      instagram: "deni.letters",
+    },
+    DENI_PRODUCTS,
+  );
+
+  const counts = {
+    users: await db.user.count(),
+    sellers: await db.sellerProfile.count(),
+    products: await db.product.count(),
+  };
+
+  console.log(
+    [
+      "",
+      "Done.",
+      `  ${counts.users} users, ${counts.sellers} sellers, ${counts.products} products`,
+      "",
+      "  Sign in with any of these and the password below:",
+      ...USERS.map((u) => `    ${u.email.padEnd(24)} ${u.role}`),
+      `    password: ${DEMO_PASSWORD}`,
+      "",
+    ].join("\n"),
+  );
+}
+
+main()
+  .catch((error) => {
+    console.error("\nSeed failed:\n", error);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await db.$disconnect();
+  });

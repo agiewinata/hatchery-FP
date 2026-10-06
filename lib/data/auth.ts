@@ -24,25 +24,11 @@ import { cache } from "react";
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ForbiddenError, UnauthenticatedError } from "@/lib/errors";
 import type { UserRole } from "@/lib/generated/prisma/enums";
 
-/** Not signed in -> the UI should send them to /login. */
-export class UnauthenticatedError extends Error {
-  readonly status = 401;
-  constructor(message = "You must be signed in to do that.") {
-    super(message);
-    this.name = "UnauthenticatedError";
-  }
-}
-
-/** Signed in, but not allowed -> 403. Never leaks why. */
-export class ForbiddenError extends Error {
-  readonly status = 403;
-  constructor(message = "You do not have permission to do that.") {
-    super(message);
-    this.name = "ForbiddenError";
-  }
-}
+// Re-exported for convenience so DAL consumers have one import site.
+export { ForbiddenError, UnauthenticatedError };
 
 /**
  * The only shape of "current user" the rest of the app ever sees.

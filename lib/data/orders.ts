@@ -19,6 +19,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 
 import { db } from "@/lib/db";
+import { CheckoutError, ForbiddenError } from "@/lib/errors";
 import type { FulfilmentType, OrderItemStatus } from "@/lib/generated/prisma/enums";
 import { amountMatches, computeOrderTotals } from "@/lib/money";
 import {
@@ -28,7 +29,9 @@ import {
 } from "@/lib/orders/transitions";
 import type { AddressInput } from "@/lib/validation/seller";
 
-import { ForbiddenError, requireAdmin, requireSeller, requireUser, type CurrentUser } from "./auth";
+import { requireAdmin, requireSeller, requireUser, type CurrentUser } from "./auth";
+
+export { CheckoutError };
 
 /** Human-facing reference, e.g. KM-20261006-7F3A. */
 function newOrderNumber(): string {
@@ -47,8 +50,6 @@ function isUniqueViolation(error: unknown): boolean {
     (error as { code?: unknown }).code === "P2002"
   );
 }
-
-export class CheckoutError extends Error {}
 
 export interface CreatedOrder {
   id: string;

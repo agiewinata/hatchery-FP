@@ -8,8 +8,10 @@
  * error never leaks a stack trace, a query or a database message to the
  * browser.
  */
-import { ForbiddenError, UnauthenticatedError } from "@/lib/data/auth";
-import { CheckoutError } from "@/lib/data/orders";
+// Imported from lib/errors, NOT from lib/data/*: this module is reached by
+// Client Components (for ActionState and idleState), and importing the DAL here
+// would pull lib/db.ts and the Postgres driver into the browser bundle.
+import { CheckoutError, ForbiddenError, UnauthenticatedError } from "@/lib/errors";
 import { MoneyError } from "@/lib/money";
 
 export type ActionState =

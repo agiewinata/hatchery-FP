@@ -1,26 +1,227 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-body);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-display);
+  --font-display: var(--font-display);
+
+  /* Material tokens - see :root for the reasoning behind each. */
+  --color-shell: var(--shell);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-brass: var(--brass);
+  --color-enamel: var(--enamel);
+  --color-film: var(--film);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/*
+ * Palette drawn from the materials this marketplace actually sells:
+ * hard-enamel pins and acrylic charms.
+ *
+ *   shell  - the cool grey-green of acrylic protective film. Deliberately not
+ *            cream: the shell must recede so artwork is the only saturated
+ *            thing on the page.
+ *   ink    - deep pine. A genuinely green dark rather than a tinted near-black.
+ *   brass  - the raised metal line that separates colour fields on a hard
+ *            enamel pin. Used for hairline rules and the ring motif only,
+ *            never for text.
+ *   enamel - hard-enamel magenta. The single pop, spent on one thing per view.
+ */
+:root {
+  --radius: 0.5rem;
+
+  --shell: #e9ede8;
+  --paper: #ffffff;
+  --ink: #15312a;
+  --brass: #a8803c;
+  --enamel: #d81e73;
+  --film: #c3d2cd;
+
+  --background: var(--shell);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+
+  --primary: var(--ink);
+  --primary-foreground: #f3f7f3;
+  --secondary: #dbe3dc;
+  --secondary-foreground: var(--ink);
+  --muted: #dde5df;
+  --muted-foreground: #556b63;
+  --accent: var(--enamel);
+  --accent-foreground: #ffffff;
+  --destructive: #a81e14;
+
+  --border: #ccd8d1;
+  --input: #ccd8d1;
+  --ring: var(--brass);
+
+  --chart-1: #15312a;
+  --chart-2: #a8803c;
+  --chart-3: #d81e73;
+  --chart-4: #4e7c6c;
+  --chart-5: #c3d2cd;
+
+  --sidebar: #e3e9e2;
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: #f3f7f3;
+  --sidebar-accent: #dbe3dc;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: #ccd8d1;
+  --sidebar-ring: var(--brass);
+}
+
+/* Night: the pine deepens rather than going grey, so the palette stays itself. */
+.dark {
+  --shell: #0c1d19;
+  --paper: #142b25;
+  --ink: #e6efe8;
+  --brass: #c89f58;
+  --enamel: #f45d9e;
+  --film: #35544b;
+
+  --background: var(--shell);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --popover: var(--paper);
+  --popover-foreground: var(--ink);
+
+  --primary: #e6efe8;
+  --primary-foreground: #0c1d19;
+  --secondary: #1d3a32;
+  --secondary-foreground: var(--ink);
+  --muted: #1d3a32;
+  --muted-foreground: #9ab3a9;
+  --accent: var(--enamel);
+  --accent-foreground: #15312a;
+  --destructive: #f2635a;
+
+  --border: #ffffff1a;
+  --input: #ffffff26;
+  --ring: var(--brass);
+
+  --chart-1: #e6efe8;
+  --chart-2: #c89f58;
+  --chart-3: #f45d9e;
+  --chart-4: #6f9d8c;
+  --chart-5: #35544b;
+
+  --sidebar: #102420;
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: #e6efe8;
+  --sidebar-primary-foreground: #0c1d19;
+  --sidebar-accent: #1d3a32;
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: #ffffff1a;
+  --sidebar-ring: var(--brass);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+    /* Body copy sits below 80 characters per line; see .measure. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /*
+   * Display type is an active part of the design, not a delivery vehicle:
+   * tight tracking, heavy weight, and a narrow-ish width from Bricolage's
+   * variable axes.
+   */
+  h1, h2, h3 {
+    @apply font-display font-bold tracking-tight text-balance;
+  }
+
+  /* Prices and quantities are data. Tabular figures keep columns aligned. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* Comfortable measure for prose. */
+  .measure {
+    max-width: 62ch;
+  }
+
+  /* Keyboard focus must always be visible. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  /* A brass hairline - the raised metal line of a hard enamel pin. */
+  .rule-brass {
+    background-image: linear-gradient(
+      to right,
+      color-mix(in oklab, var(--brass) 55%, transparent),
+      color-mix(in oklab, var(--brass) 15%, transparent)
+    );
+    height: 1px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Respect a reduced-motion preference everywhere, including library animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

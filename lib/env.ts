@@ -15,6 +15,17 @@ import { z } from "zod";
 const providerPair = <const T extends readonly [string, ...string[]]>(values: T) =>
   z.enum(values);
 
+/**
+ * Is this a real production DEPLOYMENT (as opposed to a production BUILD)?
+ *
+ * NODE_ENV cannot answer this: `next build` always sets it to "production",
+ * so gating on it would block an ordinary local or Docker test build. Vercel
+ * sets VERCEL_ENV automatically on deployments, so production stays guarded
+ * with no extra configuration; APP_ENV is the escape hatch for other hosts.
+ */
+const isProductionDeployment =
+  process.env.VERCEL_ENV === "production" || process.env.APP_ENV === "production";
+
 const schema = z
   .object({
     NODE_ENV: z
@@ -90,8 +101,8 @@ const schema = z
       require(!!cfg.BLOB_READ_WRITE_TOKEN, "BLOB_READ_WRITE_TOKEN", "Required when UPLOAD_PROVIDER=BLOB.");
     }
 
-    // Production must not run on the dev-only stubs.
-    if (cfg.NODE_ENV === "production") {
+    // A real production deployment must not run on the dev-only stubs.
+    if (isProductionDeployment) {
       require(cfg.PAYMENT_PROVIDER !== "MOCK", "PAYMENT_PROVIDER", "MOCK payments are forbidden in production.");
       require(cfg.UPLOAD_PROVIDER !== "LOCAL", "UPLOAD_PROVIDER", "LOCAL uploads are not durable in production; use BLOB.");
       require(cfg.BETTER_AUTH_URL.startsWith("https://"), "BETTER_AUTH_URL", "Must be https:// in production.");
@@ -111,6 +122,9 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+/** True only on a real production deployment, not merely a production build. */
+export const isProduction = isProductionDeployment;
 
 /** Google OAuth is optional in development; the UI hides the button when unset. */
 export const isGoogleOAuthEnabled =

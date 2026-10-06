@@ -33,9 +33,11 @@ const schema = z
       .default("development"),
 
     // --- Database ---
+    // The message is set on the type itself, not just on .min(1), so a variable
+    // that is absent entirely reports the same helpful text as an empty one.
     DATABASE_URL: z
-      .string()
-      .min(1, { error: "DATABASE_URL is required (Neon pooled connection string)." })
+      .string({ error: "DATABASE_URL is required (use the Neon pooled connection string)." })
+      .min(1, { error: "DATABASE_URL is required (use the Neon pooled connection string)." })
       .refine((v) => v.startsWith("postgres://") || v.startsWith("postgresql://"), {
         error: "DATABASE_URL must be a postgres:// or postgresql:// URL.",
       }),

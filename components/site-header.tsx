@@ -52,9 +52,14 @@ export async function SiteHeader() {
             </Link>
           )}
           {user?.role === "ADMIN" && (
-            <Link href="/admin/production" className="hover:text-enamel">
-              Production
-            </Link>
+            <>
+              <Link href="/admin/production" className="hover:text-enamel">
+                Production
+              </Link>
+              <Link href="/admin/sellers" className="hover:text-enamel">
+                Sellers
+              </Link>
+            </>
           )}
         </nav>
 

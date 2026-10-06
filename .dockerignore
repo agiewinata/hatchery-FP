@@ -1,0 +1,40 @@
+# Keep the build context small and, more importantly, keep secrets out of it.
+# Anything listed here cannot end up in an image layer.
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.github
+
+node_modules
+.next
+out
+
+# Generated at build time inside the image.
+lib/generated
+
+# Local upload storage - user content, not part of the image.
+public/uploads
+
+# Tests and tooling that the runtime does not need.
+**/*.test.ts
+**/*.test.tsx
+vitest.config.mts
+test
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+
+# Docs
+README.md
+AGENTS.md
+CLAUDE.md
+docs

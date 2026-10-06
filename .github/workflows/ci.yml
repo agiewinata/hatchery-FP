@@ -1,0 +1,110 @@
+name: CI
+
+# Runs on every push and pull request. The job is deliberately one sequence
+# rather than a matrix: on a small project a single clear pass/fail is more
+# useful than parallel shards.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Cancel superseded runs on the same branch instead of queueing them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: the default token can read the repo and nothing else.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+
+    env:
+      # Enough to satisfy lib/env.ts, which fails fast on invalid config.
+      # No real credentials: the build constructs the Prisma client but never
+      # queries, and the tests use pure functions.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+      BETTER_AUTH_SECRET: ci-placeholder-secret-at-least-32-characters
+      BETTER_AUTH_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: 1
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      # `npm ci` installs exactly the lockfile, so CI cannot silently pick up a
+      # newer transitive dependency than the one that was reviewed.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Validate schema
+        run: npx prisma validate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Production dependencies only. A dev-only advisory should not block a
+      # deploy, but it should still be visible, hence the separate soft step.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Audit all dependencies (advisory only)
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only - nothing is pushed anywhere. This proves the Dockerfile
+      # still works, which is easy to break without noticing.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: keychain-marketplace:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

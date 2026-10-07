@@ -23,11 +23,10 @@
 import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 
-/** Routes that are useless when signed out. Redirected for convenience only. */
-const PRIVATE_PREFIXES = ["/account", "/seller", "/admin"];
-
-/** Routes a signed-in user has no reason to see. */
-const AUTH_PAGES = ["/login", "/register", "/forgot-password"];
+// Segment-aware matchers, unit-tested in lib/route-access.test.ts. A raw
+// startsWith() here previously sent every PUBLIC /sellers/<slug> portfolio to
+// the login page, because "/sellers/mira".startsWith("/seller") is true.
+import { isAuthPage, isPrivatePath } from "@/lib/route-access";
 
 function buildCsp(nonce: string, isDev: boolean): string {
   return [
@@ -62,14 +61,14 @@ export function proxy(request: NextRequest) {
   // --- Session-cookie presence check (UX only - see header comment) ---------
   const hasSessionCookie = Boolean(getSessionCookie(request));
 
-  if (!hasSessionCookie && PRIVATE_PREFIXES.some((p) => pathname.startsWith(p))) {
+  if (!hasSessionCookie && isPrivatePath(pathname)) {
     const loginUrl = new URL("/login", request.url);
     // Preserve where they were going so login can send them back.
     loginUrl.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (hasSessionCookie && AUTH_PAGES.includes(pathname)) {
+  if (hasSessionCookie && isAuthPage(pathname)) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

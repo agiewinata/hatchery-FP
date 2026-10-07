@@ -11,10 +11,10 @@
  * to boot, where it belongs.
  *
  * Note on the implementation: this file is compiled for BOTH the Node and Edge
- * runtimes, so it must not *mention* Node-only APIs at all - a `process.exit`
- * reference fails the Edge compile even when guarded at runtime, because the
- * check is static. Rethrowing achieves the same outcome portably: an error out
- * of `register()` aborts startup and exits non-zero.
+ * runtimes, so its CODE must not reference Node-only APIs - an exit call fails
+ * the Edge compile even when guarded at runtime, because the check is static.
+ * Rethrowing achieves the same outcome portably: an error out of `register()`
+ * aborts startup and exits non-zero.
  */
 
 export async function register() {

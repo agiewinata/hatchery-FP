@@ -15,7 +15,7 @@
  */
 
 /** Signed-out visitors are sent to /login from these path trees. */
-export const PRIVATE_PREFIXES = ["/account", "/seller", "/admin"] as const;
+export const PRIVATE_PREFIXES = ["/account", "/seller", "/admin", "/studio"] as const;
 
 /** Signed-in visitors have no reason to see these, so they go to the home page. */
 export const AUTH_PAGES = ["/login", "/register", "/forgot-password"] as const;

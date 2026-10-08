@@ -83,3 +83,29 @@ describe("auth pages", () => {
     expect(isAuthPage("/login/other")).toBe(false);
   });
 });
+
+describe("the studio tree", () => {
+  it.each(["/studio", "/studio/designs", "/studio/designs/abc123"])(
+    "%s is private",
+    (path) => {
+      expect(isPrivatePath(path)).toBe(true);
+    },
+  );
+
+  it("does not swallow neighbouring paths that merely share the prefix", () => {
+    // The /seller vs /sellers bug, one tree over. A prefix must end on a
+    // segment boundary or every public page under a similar name disappears
+    // behind a login wall - and a login page looks like it is working.
+    expect(isPrivatePath("/studiolike")).toBe(false);
+    expect(isPrivatePath("/studios")).toBe(false);
+    expect(isPrivatePath("/studio-guide")).toBe(false);
+  });
+
+  it("keeps shared designs public, which is why they live outside /studio", () => {
+    // Shared links sit at /designs/<slug>, deliberately NOT under /studio. Had
+    // they lived at /studio/shared/..., adding /studio to PRIVATE_PREFIXES
+    // would have sent every shared link to /login.
+    expect(isPrivatePath("/designs/foxy-charm-a1b2c3")).toBe(false);
+    expect(isPrivatePath("/designs")).toBe(false);
+  });
+});

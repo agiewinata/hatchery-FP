@@ -46,6 +46,7 @@ model User {
   addresses      Address[]
   auditLogs      AuditLog[]
   recordedEvents OrderItemEvent[] @relation("EventActor")
+  studioDesigns  StudioDesign[]
 
   @@map("user")
 }
@@ -403,6 +404,45 @@ model AuditLog {
 }
 
 // ===========================================================================
+// Studio (2D image -> 3D printable model)
+// ===========================================================================
+
+/// A saved studio design.
+///
+/// A design IS its traced outline plus its template parameters - the geometry
+/// is regenerated from them deterministically, so no mesh and no source image
+/// is ever stored. That is what keeps this table small, keeps a shared design
+/// renderable for any viewer, and leaves no user-uploaded imagery to moderate.
+model StudioDesign {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title String
+  /// Server-generated, never user-chosen, so no one can squat a name.
+  slug  String @unique
+
+  /// Which parametric template. Validated as a discriminated union with params.
+  templateId String
+
+  /// Traced silhouette: { outer: [[x,y],...], holes: [[[x,y],...]] }.
+  /// Zod-parsed on READ as well as write - a Json column is schemaless, so a
+  /// row written by older code is untrusted input to today's renderer.
+  outline Json
+  /// Template parameter values, shaped by templateId.
+  params  Json
+
+  visibility DesignVisibility @default(PRIVATE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([visibility, createdAt])
+  @@map("studio_design")
+}
+
+// ===========================================================================
 // Enums
 // ===========================================================================
 
@@ -471,4 +511,9 @@ enum PayoutStatus {
   APPROVED
   PAID
   REJECTED
+}
+
+enum DesignVisibility {
+  PRIVATE
+  PUBLIC
 }

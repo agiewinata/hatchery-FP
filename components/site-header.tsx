@@ -42,6 +42,9 @@ export async function SiteHeader() {
           <Link href="/products" className="hover:text-enamel">
             Browse
           </Link>
+          <Link href="/studio" className="hover:text-enamel">
+            Studio
+          </Link>
           {sellerSlug ? (
             <Link href="/seller/dashboard" className="hover:text-enamel">
               Your shop
@@ -58,6 +61,9 @@ export async function SiteHeader() {
               </Link>
               <Link href="/admin/sellers" className="hover:text-enamel">
                 Sellers
+              </Link>
+              <Link href="/admin/designs" className="hover:text-enamel">
+                Designs
               </Link>
             </>
           )}

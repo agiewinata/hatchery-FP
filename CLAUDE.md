@@ -46,6 +46,8 @@ app/
     seller/
       start/                    NOT gated (see gotcha below)
       (dashboard)/              gate layout lives here
+    studio/                   3D studio — PRIVATE (see gotcha below)
+    designs/[slug]/           shared design — PUBLIC, deliberately NOT under /studio
   (auth)/          login, register, password reset      — no shop chrome
   dev/pay/         simulated payment page (MOCK provider only)
   api/             better-auth handler, payment webhook, upload endpoint
@@ -57,6 +59,8 @@ lib/
   money.ts         pure pricing arithmetic
   errors.ts        typed errors, MUST import nothing (see gotcha)
   route-access.ts  pure path matching for proxy.ts
+  slug.ts          shared slugify — used by BOTH products and studio designs
+  studio/          pure 2D→3D geometry, MUST NOT import Three.js (see gotcha)
   env.ts           the ONLY reader of process.env
 ```
 
@@ -175,6 +179,58 @@ docker run --rm -v "C:/Keychain making:/app" -w /app node:24-alpine \
 - Scripted calls to `/api/auth/*` need an **`Origin` header** or they get
   `403 MISSING_OR_NULL_ORIGIN` from the CSRF check.
 
+### The studio (2D image → 3D printable model)
+
+A standalone tool at `/studio`. It sells nothing and shares no code with the
+fulfilment model — `Product`, `OrderItem` and `fulfilmentType` are untouched.
+Design doc: `docs/superpowers/specs/2026-10-07-studio-2d-to-3d-design.md`.
+
+- **The CSP forbids WebAssembly.** `script-src` carries no `wasm-unsafe-eval`,
+  so every WASM mesh library (`manifold-3d` and friends) is unusable. This is
+  why the keyring hole is punched as an extra **polygon hole before
+  triangulation** rather than as a boolean subtract: it removes any need for a
+  CSG library, and therefore any need to weaken the CSP. Do not "simplify" this
+  into a boolean op.
+
+- **`lib/studio/*` must not import Three.js.** Same discipline as
+  `lib/errors.ts` importing nothing: the maths returns plain typed arrays and
+  only `components/studio/model-viewer.tsx` converts them to a
+  `BufferGeometry`. This is what keeps the geometry unit-testable in plain node
+  with no DOM and no WebGL.
+
+- **`next/dynamic` with `ssr: false` only works inside a Client Component.**
+  Three.js cannot server-render and is ~600KB, so the viewer is dynamically
+  imported from `studio-editor.tsx` (a Client Component), never from a page.
+  Verified: the Three chunk is absent from `rootMainFiles`, so storefront pages
+  do not pay for it.
+
+- **A hole that will not fit is DROPPED, not thrown.** On a concave outline a
+  corner-positioned hole can land outside the material; handing earcut an
+  uncontained ring yields a silently non-manifold mesh. `buildGeometry` must be
+  able to promise a watertight solid unconditionally — a preview cannot become
+  corrupt mid-drag — so `holeFits` filters it out and `checkPrintability` is
+  what tells the user. The geometry tests assert watertightness as a property.
+
+- **Simplification is load-bearing, not polish.** Tracing emits one vertex per
+  pixel boundary, so without Douglas-Peucker a 1000px logo yields tens of
+  thousands of points: an unusable STL and a stuttering viewer. Note the
+  algorithm is **O(n²) when no point is ever within tolerance** (a pure
+  zigzag: 8k points ≈ 2s). Real input avoids it — the trace is capped at 512px
+  by `MAX_TRACE_DIMENSION`, `removeCollinear` runs first, and `simplifyRing`
+  skips Douglas-Peucker entirely at tolerance 0 — but do not feed it an
+  uncapped ring.
+
+- **The share page lives at `/designs/[slug]`, outside `/studio`.** `/studio` is
+  in `PRIVATE_PREFIXES`; had sharing lived at `/studio/shared/...` every shared
+  link would redirect to login — the `/seller` vs `/sellers` bug again, in the
+  same hard-to-notice direction. Keep public and private split by path prefix.
+
+- **No image is ever uploaded or stored.** Decoding and tracing happen in the
+  browser; only the traced outline and the template parameters are saved. That
+  is what makes a shared design renderable for a stranger with no stored
+  imagery to moderate — and it means the trace threshold cannot be re-tuned
+  after reopening a saved design.
+
 ### Testing notes
 
 - **React SSR inserts `<!-- -->` between adjacent text nodes**, so `{n} items`
@@ -200,6 +256,9 @@ docker run --rm -v "C:/Keychain making:/app" -w /app node:24-alpine \
   Xendit's unit so no scaling happens near a payment.
 - **The DAL returns DTOs**, built explicitly rather than spread, so adding a
   sensitive column cannot silently widen what callers receive.
+- **`Json` columns are Zod-parsed on READ as well as write.** A `Json` column is
+  schemaless, so a row written by an older version of the code is untrusted
+  input to today's renderer. See `parseStored` in `lib/data/studio.ts`.
 - **Seller writes are scoped by `sellerId` from the session**, using
   `updateMany` so a mismatched owner yields `count: 0` instead of touching
   another row. Never take ownership from a request body.
@@ -219,7 +278,7 @@ npm run dev          # run in YOUR terminal: dev emails print to stdout
 npm run build        # prisma generate && next build
 npm run typecheck    # tsc --noEmit
 npm run lint
-npm test             # vitest, 126 tests
+npm test             # vitest, 240 tests
 npm run db:migrate   # prisma migrate dev  (NOT db push)
 npm run db:seed      # idempotent
 npx next typegen     # after adding/moving a route
@@ -253,9 +312,26 @@ All deliberate; do not "correct" them without reading the reason.
 
 Working and verified end to end against Neon: catalog, product pages, public
 portfolios, auth (including password reset via console email), seller
-onboarding, and the gated dashboard. Migration `20261007010823_init` is applied
-and committed; the database is seeded.
+onboarding, and the gated dashboard. Migrations `20261007010823_init` and
+`20261007135835_add_studio_design` are applied; the database is seeded.
+
+**The studio is complete** and verified against a running server: tracing,
+extrusion, STL export, saving, reopening, public sharing and admin takedown.
+IDOR was probed directly — a stranger requesting another user's
+`/studio/designs/<id>` gets a 404 with no title in the body, and a private
+design's share link 404s until it is published.
 
 Not yet exercised with real data: the full cart → checkout → webhook → tracker
 path, and the admin production queue advancing a live order. Xendit keys are not
 yet configured, so payments run on `MOCK`. Nothing has been pushed to a remote.
+
+### Known issues
+
+- **`shadcn` is in `dependencies`, not `devDependencies`.** It drags `ts-morph`
+  into the production tree, which trips `npm audit --omit=dev --audit-level=high`
+  — so the CI audit job currently fails. It is a CLI; moving it one line fixes
+  the audit and shrinks the Docker image.
+- **`package-lock.json` was last regenerated on Windows.** It still carries its
+  16 Linux `sharp` entries, so it looks fine, but `npm ci` on Linux has not been
+  re-verified since (Docker Desktop was not running). See the lockfile gotcha
+  above before trusting a Docker or CI build.

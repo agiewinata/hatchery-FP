@@ -44,3 +44,6 @@ next-env.d.ts
 
 # Keep the env template in version control (must come after .env*)
 !.env.example
+
+# local-provider uploads (runtime data)
+/public/uploads/

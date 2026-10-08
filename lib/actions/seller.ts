@@ -16,6 +16,7 @@ import {
 } from "@/lib/data/products";
 import { getOwnEarnings, upsertOwnSellerProfile } from "@/lib/data/sellers";
 import { db } from "@/lib/db";
+import { slugify } from "@/lib/slug";
 import { productInputSchema, productStatusSchema, slugSchema } from "@/lib/validation/product";
 import {
   orderStatusChangeSchema,
@@ -24,16 +25,6 @@ import {
 } from "@/lib/validation/seller";
 
 import { fieldErrors, runAction, type ActionState } from "./result";
-
-/** Turn a title into a candidate slug. The result is still schema-validated. */
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
 
 export async function saveSellerProfileAction(
   _prev: ActionState,
